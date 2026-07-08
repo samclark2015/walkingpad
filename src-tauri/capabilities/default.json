@@ -14,8 +14,8 @@
     "core:tray:default",
     "opener:default",
     "positioner:default",
-    "sql:default",
     "updater:default",
+    "process:allow-exit",
     "process:allow-restart"
   ]
 }

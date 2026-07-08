@@ -1,14 +1,11 @@
 import { useEffect, useCallback, useState } from "react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { usePadStore } from "../store/padStore";
 import { MetricsBar } from "./MetricsBar";
 import { SpeedChart } from "./SpeedChart";
 import { SpeedControl } from "./SpeedControl";
 import { ModeControl } from "./ModeControl";
-import { SessionHistory } from "./SessionHistory";
+import { Preferences } from "./Preferences";
 import { BELT_RUNNING } from "../lib/tauri";
-
-const appWindow = getCurrentWindow();
 
 export function Dashboard() {
   const beltState = usePadStore((s) => s.beltState);
@@ -17,23 +14,10 @@ export function Dashboard() {
   const stopBelt = usePadStore((s) => s.stopBelt);
   const disconnect = usePadStore((s) => s.disconnect);
   const deviceAddress = usePadStore((s) => s.deviceAddress);
-  const loadSessions = usePadStore((s) => s.loadSessions);
   const errorMessage = usePadStore((s) => s.errorMessage);
   const clearError = usePadStore((s) => s.clearError);
-  const units = usePadStore((s) => s.units);
-  const setUnits = usePadStore((s) => s.setUnits);
 
-  const [alwaysOnTop, setAlwaysOnTop] = useState(false);
-
-  useEffect(() => {
-    loadSessions();
-  }, [loadSessions]);
-
-  const toggleAlwaysOnTop = useCallback(async () => {
-    const next = !alwaysOnTop;
-    await appWindow.setAlwaysOnTop(next);
-    setAlwaysOnTop(next);
-  }, [alwaysOnTop]);
+  const [showPrefs, setShowPrefs] = useState(false);
 
   const isRunning = beltState === BELT_RUNNING;
 
@@ -45,6 +29,15 @@ export function Dashboard() {
     }
   }, [isRunning, startBelt, stopBelt]);
 
+  // Close prefs panel if Escape pressed
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setShowPrefs(false);
+    }
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, []);
+
   return (
     <div className="min-h-screen bg-gray-950 text-white flex flex-col">
       {/* Header */}
@@ -54,63 +47,37 @@ export function Dashboard() {
           <p className="text-xs text-gray-500 font-mono">{deviceAddress}</p>
         </div>
         <div className="flex items-center gap-3">
-          {/* Always on top */}
-          <button
-            onClick={toggleAlwaysOnTop}
-            title={alwaysOnTop ? "Disable always on top" : "Keep window on top"}
-            className={`text-xs font-medium px-2.5 py-1.5 rounded-lg border transition-colors ${
-              alwaysOnTop
-                ? "border-indigo-500 bg-indigo-600/30 text-indigo-300"
-                : "border-gray-700 bg-gray-800 text-gray-400 hover:text-white"
-            }`}
-          >
-            ↑ top
-          </button>
-
-          {/* Unit toggle */}
-          <div className="flex items-center rounded-lg overflow-hidden border border-gray-700 text-xs font-medium">
-            <button
-              onClick={() => setUnits("metric")}
-              className={`px-2.5 py-1.5 transition-colors ${
-                units === "metric"
-                  ? "bg-indigo-600 text-white"
-                  : "bg-gray-800 text-gray-400 hover:text-white"
-              }`}
-            >
-              km
-            </button>
-            <button
-              onClick={() => setUnits("imperial")}
-              className={`px-2.5 py-1.5 transition-colors ${
-                units === "imperial"
-                  ? "bg-indigo-600 text-white"
-                  : "bg-gray-800 text-gray-400 hover:text-white"
-              }`}
-            >
-              mi
-            </button>
-          </div>
-
           <div className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full ${
             isRunning ? "bg-green-900/50 text-green-300" : "bg-gray-700 text-gray-400"
           }`}>
             <span className={`w-1.5 h-1.5 rounded-full ${isRunning ? "bg-green-400 animate-pulse" : "bg-gray-500"}`} />
             {isRunning ? "Running" : "Standby"}
           </div>
+
           <button
             onClick={disconnect}
             className="text-xs text-gray-400 hover:text-white transition-colors"
           >
             Disconnect
           </button>
-          {/* Hide window */}
-          <button
-            onClick={() => appWindow.hide()}
-            className="text-gray-600 hover:text-gray-300 transition-colors text-lg leading-none"
-            title="Hide"
-          >
-            ×
-          </button>
+
+          {/* Preferences */}
+          <div className="relative">
+            <button
+              onClick={() => setShowPrefs((v) => !v)}
+              title="Preferences"
+              className={`text-xs font-medium px-2.5 py-1.5 rounded-lg border transition-colors ${
+                showPrefs
+                  ? "border-indigo-500 bg-indigo-600/30 text-indigo-300"
+                  : "border-gray-700 bg-gray-800 text-gray-400 hover:text-white"
+              }`}
+            >
+              ⚙
+            </button>
+            {showPrefs && (
+              <Preferences onClose={() => setShowPrefs(false)} />
+            )}
+          </div>
         </div>
       </header>
 
@@ -156,9 +123,6 @@ export function Dashboard() {
           <SpeedControl />
           <ModeControl />
         </div>
-
-        {/* Session history */}
-        <SessionHistory />
       </main>
     </div>
   );

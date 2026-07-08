@@ -1,11 +1,10 @@
 mod ble;
 mod commands;
-mod db;
 mod state;
 
 use commands::{
     ask_hist, ask_stats, connect_device, disconnect_device, scan_devices, set_pref_start_speed,
-    set_speed, start_belt, stop_belt, switch_mode,
+    set_speed, set_tray_title, start_belt, stop_belt, switch_mode,
 };
 use state::AppState;
 use tauri::{
@@ -13,6 +12,9 @@ use tauri::{
     Manager, WindowEvent,
 };
 use tauri_plugin_positioner::{Position, WindowExt};
+use tauri_plugin_updater::UpdaterExt;
+
+pub const TRAY_ID: &str = "main";
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -22,19 +24,6 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_positioner::init())
-        .plugin(
-            tauri_plugin_sql::Builder::new()
-                .add_migrations(
-                    "sqlite:walkingpad.db",
-                    vec![tauri_plugin_sql::Migration {
-                        version: 1,
-                        description: "create sessions table",
-                        sql: include_str!("../migrations/001_init.sql"),
-                        kind: tauri_plugin_sql::MigrationKind::Up,
-                    }],
-                )
-                .build(),
-        )
         .plugin(tauri_plugin_opener::init())
         .manage(AppState::new())
         .invoke_handler(tauri::generate_handler![
@@ -48,6 +37,7 @@ pub fn run() {
             switch_mode,
             ask_stats,
             ask_hist,
+            set_tray_title,
         ])
         .setup(|app| {
             // Spawn a background update check. The built-in dialog:true config handles
@@ -76,7 +66,7 @@ pub fn run() {
             let icon = tauri::image::Image::from_bytes(icon_bytes)
                 .expect("tray icon");
 
-            let _tray = TrayIconBuilder::new()
+            let _tray = TrayIconBuilder::with_id(TRAY_ID)
                 .icon(icon)
                 .icon_as_template(true) // macOS: treat as template image (auto dark/light)
                 .tooltip("WalkingPad")

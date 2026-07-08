@@ -25,17 +25,6 @@ export interface LastStatus {
   steps: number;
 }
 
-export interface SessionRow {
-  id: number;
-  started_at: number;
-  duration_s: number;
-  dist_m: number;
-  steps: number;
-  max_speed: number;
-  avg_speed: number;
-  created_at: number;
-}
-
 // ─── Mode constants ───────────────────────────────────────────────────────────
 
 export const MODE_AUTO = 0;
@@ -73,6 +62,10 @@ export const switchMode = (mode: number): Promise<void> =>
 
 export const askStats = (): Promise<void> => invoke("ask_stats");
 export const askHist = (): Promise<void> => invoke("ask_hist");
+
+/** Set the tray icon title text (shown next to the tray icon in the menubar) */
+export const setTrayTitle = (title: string): Promise<void> =>
+  invoke("set_tray_title", { title });
 
 // ─── Event listeners ──────────────────────────────────────────────────────────
 

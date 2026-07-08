@@ -1,9 +1,7 @@
 import { create } from "zustand";
-import Database from "@tauri-apps/plugin-sql";
 import {
   CurStatus,
   LastStatus,
-  SessionRow,
   connectDevice as tauriConnect,
   disconnectDevice as tauriDisconnect,
   startBelt as tauriStart,
@@ -11,11 +9,12 @@ import {
   setSpeed as tauriSetSpeed,
   setPrefStartSpeed as tauriSetPrefStartSpeed,
   switchMode as tauriSwitchMode,
+  setTrayTitle as tauriSetTrayTitle,
   onStatus,
   onLastStatus,
   BELT_RUNNING,
 } from "../lib/tauri";
-import { UnitSystem, loadUnits, saveUnits } from "../lib/units";
+import { UnitSystem, loadUnits, saveUnits, displaySpeed, speedUnit, displayDist, distUnit } from "../lib/units";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 
 // ─── Last-address persistence ─────────────────────────────────────────────────
@@ -50,6 +49,24 @@ function saveDesiredSpeed(kmh: number): void {
   try { localStorage.setItem(LS_DESIRED_SPEED, String(kmh)); } catch { /* ignore */ }
 }
 
+// ─── Menubar display preference persistence ───────────────────────────────────
+
+const LS_MENUBAR_DISPLAY = "walkingpad.menubarDisplay";
+
+export type MenubarDisplay = "none" | "speed" | "time" | "steps" | "distance";
+
+export function loadMenubarDisplay(): MenubarDisplay {
+  try {
+    const v = localStorage.getItem(LS_MENUBAR_DISPLAY);
+    if (v === "none" || v === "speed" || v === "time" || v === "steps" || v === "distance") return v;
+  } catch { /* ignore */ }
+  return "none";
+}
+
+export function saveMenubarDisplay(d: MenubarDisplay): void {
+  try { localStorage.setItem(LS_MENUBAR_DISPLAY, d); } catch { /* ignore */ }
+}
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export type ConnectionState =
@@ -77,6 +94,9 @@ interface PadStore {
   // Unit preference (persisted to localStorage)
   units: UnitSystem;
 
+  // Menubar display preference (persisted to localStorage)
+  menubarDisplay: MenubarDisplay;
+
   // Live metrics (always stored in metric internally)
   beltState: number;
   speedKmh: number;
@@ -94,14 +114,6 @@ interface PadStore {
   // Desired speed (km/h) — sent to belt on start and on explicit set
   desiredSpeedKmh: number;
 
-  // Session tracking
-  sessionStart: number | null;
-  sessionPeakSpeed: number;
-  speedSum: number;
-  speedSamples: number;
-
-  // Session history
-  sessions: SessionRow[];
   lastStatus: LastStatus | null;
 
   // Internals
@@ -116,18 +128,9 @@ interface PadStore {
   setSpeed(speedX10: number): Promise<void>;
   setDesiredSpeed(speedX10: number): Promise<void>;
   switchMode(mode: number): Promise<void>;
-  loadSessions(): Promise<void>;
-  deleteSession(id: number): Promise<void>;
   clearError(): void;
   setUnits(u: UnitSystem): void;
-}
-
-// ─── DB helpers ──────────────────────────────────────────────────────────────
-
-const DB_URL = "sqlite:walkingpad.db";
-
-async function getDb(): Promise<Database> {
-  return Database.load(DB_URL);
+  setMenubarDisplay(d: MenubarDisplay): void;
 }
 
 // ─── Store implementation ────────────────────────────────────────────────────
@@ -138,6 +141,7 @@ export const usePadStore = create<PadStore>((set, get) => ({
   errorMessage: null,
 
   units: loadUnits(),
+  menubarDisplay: loadMenubarDisplay(),
 
   beltState: 5,
   speedKmh: 0,
@@ -150,12 +154,6 @@ export const usePadStore = create<PadStore>((set, get) => ({
   pendingCommand: null,
   desiredSpeedKmh: loadDesiredSpeed(),
 
-  sessionStart: null,
-  sessionPeakSpeed: 0,
-  speedSum: 0,
-  speedSamples: 0,
-
-  sessions: [],
   lastStatus: null,
 
   _unlistenStatus: null,
@@ -169,11 +167,9 @@ export const usePadStore = create<PadStore>((set, get) => ({
       // Subscribe to BLE events before calling connect so we don't miss the
       // first notification.
       const unlistenStatus = await onStatus((s: CurStatus) => {
-        const now = Date.now();
         const state = get();
 
         // Detect run start
-        const wasRunning = state.beltState === BELT_RUNNING;
         const isNowRunning = s.belt_state === BELT_RUNNING;
 
         // Clear pending command when belt confirms the transition
@@ -181,52 +177,8 @@ export const usePadStore = create<PadStore>((set, get) => ({
         if (pendingCommand === "start" && isNowRunning) pendingCommand = null;
         if (pendingCommand === "stop" && !isNowRunning) pendingCommand = null;
 
-        let sessionStart = state.sessionStart;
-        let sessionPeakSpeed = state.sessionPeakSpeed;
-        let speedSum = state.speedSum;
-        let speedSamples = state.speedSamples;
-
-        if (isNowRunning && !wasRunning) {
-          sessionStart = now;
-          sessionPeakSpeed = s.speed_kmh;
-          speedSum = s.speed_kmh;
-          speedSamples = 1;
-        } else if (isNowRunning) {
-          sessionPeakSpeed = Math.max(sessionPeakSpeed, s.speed_kmh);
-          speedSum += s.speed_kmh;
-          speedSamples += 1;
-        } else if (!isNowRunning && wasRunning && sessionStart !== null) {
-          // Belt just stopped — save session
-          const avgSpeed = speedSamples > 0 ? speedSum / speedSamples : 0;
-          const durationS = Math.round((now - sessionStart) / 1000);
-          const distM = Math.round(s.dist_km * 1000);
-          (async () => {
-            try {
-              const db = await getDb();
-              await db.execute(
-                `INSERT INTO sessions (started_at, duration_s, dist_m, steps, max_speed, avg_speed)
-                 VALUES (?, ?, ?, ?, ?, ?)`,
-                [
-                  Math.floor(sessionStart! / 1000),
-                  durationS,
-                  distM,
-                  s.steps,
-                  sessionPeakSpeed,
-                  avgSpeed,
-                ]
-              );
-              get().loadSessions();
-            } catch (e) {
-              console.error("Failed to save session:", e);
-            }
-          })();
-          sessionStart = null;
-          sessionPeakSpeed = 0;
-          speedSum = 0;
-          speedSamples = 0;
-        }
-
         // Rolling speed history (cap at 120 points)
+        const now = Date.now();
         const newPoint: SpeedPoint = { t: now, v: s.speed_kmh };
         const history = [...state.speedHistory, newPoint].slice(-120);
 
@@ -239,11 +191,11 @@ export const usePadStore = create<PadStore>((set, get) => ({
           manualMode: s.manual_mode,
           speedHistory: history,
           pendingCommand,
-          sessionStart,
-          sessionPeakSpeed,
-          speedSum,
-          speedSamples,
         });
+
+        // Update tray title based on menubar display preference
+        const { menubarDisplay, units } = get();
+        updateTrayTitle(menubarDisplay, s, units);
       });
 
       const unlistenLast = await onLastStatus((s: LastStatus) => {
@@ -282,6 +234,8 @@ export const usePadStore = create<PadStore>((set, get) => ({
     } catch (_) {
       // Ignore disconnect errors
     }
+    // Clear tray title on disconnect
+    tauriSetTrayTitle("").catch(() => {});
     set({
       connectionState: "disconnected",
       deviceAddress: null,
@@ -295,7 +249,6 @@ export const usePadStore = create<PadStore>((set, get) => ({
       manualMode: false,
       speedHistory: [],
       pendingCommand: null,
-      sessionStart: null,
     });
   },
 
@@ -354,30 +307,6 @@ export const usePadStore = create<PadStore>((set, get) => ({
     }
   },
 
-  // ─── Session history ───────────────────────────────────────────────────────
-
-  async loadSessions() {
-    try {
-      const db = await getDb();
-      const rows = await db.select<SessionRow[]>(
-        "SELECT * FROM sessions ORDER BY started_at DESC LIMIT 100"
-      );
-      set({ sessions: rows });
-    } catch (e) {
-      console.error("loadSessions:", e);
-    }
-  },
-
-  async deleteSession(id: number) {
-    try {
-      const db = await getDb();
-      await db.execute("DELETE FROM sessions WHERE id = ?", [id]);
-      get().loadSessions();
-    } catch (e) {
-      console.error("deleteSession:", e);
-    }
-  },
-
   clearError() {
     set({ errorMessage: null });
   },
@@ -385,5 +314,77 @@ export const usePadStore = create<PadStore>((set, get) => ({
   setUnits(u: UnitSystem) {
     saveUnits(u);
     set({ units: u });
+    // Re-render tray title with new units if there's a live status
+    const state = get();
+    if (state.connectionState === "connected") {
+      const fakeStatus = {
+        belt_state: state.beltState,
+        speed_kmh: state.speedKmh,
+        dist_km: state.distKm,
+        steps: state.steps,
+        time_secs: state.timeSecs,
+        manual_mode: state.manualMode,
+        app_speed_kmh: state.speedKmh,
+        controller_button: 0,
+      };
+      updateTrayTitle(state.menubarDisplay, fakeStatus, u);
+    }
+  },
+
+  setMenubarDisplay(d: MenubarDisplay) {
+    saveMenubarDisplay(d);
+    set({ menubarDisplay: d });
+    const state = get();
+    if (state.connectionState === "connected") {
+      const fakeStatus = {
+        belt_state: state.beltState,
+        speed_kmh: state.speedKmh,
+        dist_km: state.distKm,
+        steps: state.steps,
+        time_secs: state.timeSecs,
+        manual_mode: state.manualMode,
+        app_speed_kmh: state.speedKmh,
+        controller_button: 0,
+      };
+      updateTrayTitle(d, fakeStatus, state.units);
+    } else {
+      tauriSetTrayTitle("").catch(() => {});
+    }
   },
 }));
+
+// ─── Tray title helper ────────────────────────────────────────────────────────
+
+function formatTime(secs: number): string {
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+function updateTrayTitle(
+  display: MenubarDisplay,
+  s: CurStatus,
+  units: UnitSystem
+): void {
+  let title = "";
+  switch (display) {
+    case "speed":
+      title = `${displaySpeed(s.speed_kmh, units).toFixed(1)} ${speedUnit(units)}`;
+      break;
+    case "time":
+      title = formatTime(s.time_secs);
+      break;
+    case "steps":
+      title = `${s.steps.toLocaleString()}`;
+      break;
+    case "distance":
+      title = `${displayDist(s.dist_km, units).toFixed(2)} ${distUnit(units)}`;
+      break;
+    case "none":
+    default:
+      title = "";
+  }
+  tauriSetTrayTitle(title).catch(() => {});
+}

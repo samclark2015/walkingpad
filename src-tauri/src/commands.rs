@@ -162,3 +162,15 @@ pub async fn ask_stats(state: State<'_, AppState>) -> Result<(), String> {
 pub async fn ask_hist(state: State<'_, AppState>) -> Result<(), String> {
     send(&state, protocol::ask_hist(0)).await
 }
+
+// ─── Tray commands ────────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn set_tray_title(title: String, app: AppHandle) -> Result<(), String> {
+    if let Some(tray) = app.tray_by_id(crate::TRAY_ID) {
+        let title_opt: Option<&str> = if title.is_empty() { None } else { Some(&title) };
+        tray.set_title(title_opt).map_err(|e| e.to_string())
+    } else {
+        Err("Tray icon not found".to_string())
+    }
+}
