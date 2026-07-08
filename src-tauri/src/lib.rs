@@ -19,6 +19,8 @@ pub fn run() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_positioner::init())
         .plugin(
             tauri_plugin_sql::Builder::new()
@@ -48,6 +50,27 @@ pub fn run() {
             ask_hist,
         ])
         .setup(|app| {
+            // Spawn a background update check. The built-in dialog:true config handles
+            // prompting the user; errors are non-fatal (no network, no update available, etc.)
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                if let Ok(updater) = handle.updater() {
+                    match updater.check().await {
+                        Ok(Some(update)) => {
+                            log::info!(
+                                "Update available: {} → {}",
+                                update.current_version,
+                                update.version
+                            );
+                            // dialog:true causes Tauri to show the built-in prompt automatically.
+                            // If you want custom UI, call update.download_and_install() here instead.
+                        }
+                        Ok(None) => log::info!("App is up to date"),
+                        Err(e) => log::warn!("Update check failed: {e}"),
+                    }
+                }
+            });
+
             // Build the tray icon (embedded at compile time)
             let icon_bytes = include_bytes!("../icons/tray-icon.png");
             let icon = tauri::image::Image::from_bytes(icon_bytes)

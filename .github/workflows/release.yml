@@ -1,0 +1,104 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  release:
+    runs-on: macos-latest
+    permissions:
+      contents: write   # needed to create the GitHub release
+
+    steps:
+      # ── 1. Checkout ───────────────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history so we can count prior releases this month
+
+      # ── 2. Compute CalVer (YYYY.M.rev) ────────────────────────────────────────
+      # Rules:
+      #   • YYYY  = 4-digit year          (no leading zero possible)
+      #   • M     = month without padding  (1–12, never "01")
+      #   • rev   = number of tags already released THIS month + 1, starting at 0
+      #             so the very first release in a month is YYYY.M.0
+      # Tauri requires strict SemVer → we map  YYYY.M.rev → YYYY.M.rev  which is
+      # already valid SemVer (major.minor.patch) with no leading zeros.
+      - name: Compute CalVer tag
+        id: calver
+        run: |
+          YEAR=$(date -u +'%Y')
+          MONTH=$(date -u +'%-m')   # %-m strips leading zero on GNU date; works on macOS too
+          PREFIX="${YEAR}.${MONTH}."
+
+          # Count existing tags that match this month's prefix
+          COUNT=$(git tag --list "${PREFIX}*" | wc -l | tr -d ' ')
+
+          TAG="${PREFIX}${COUNT}"
+          echo "tag=${TAG}"     >> "$GITHUB_OUTPUT"
+          echo "version=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "Computed tag: ${TAG}"
+
+      # ── 3. Stamp the version into tauri.conf.json and Cargo.toml ──────────────
+      - name: Stamp version
+        run: |
+          VERSION="${{ steps.calver.outputs.version }}"
+
+          # tauri.conf.json  – replace the "version" field
+          python3 - <<'EOF'
+          import json, sys, os
+          path = "src-tauri/tauri.conf.json"
+          with open(path) as f:
+              cfg = json.load(f)
+          cfg["version"] = os.environ["VERSION"]
+          with open(path, "w") as f:
+              json.dump(cfg, f, indent=2)
+              f.write("\n")
+          EOF
+
+          # Cargo.toml – replace the version line in [package]
+          sed -i '' "s/^version = \".*\"/version = \"${VERSION}\"/" src-tauri/Cargo.toml
+        env:
+          VERSION: ${{ steps.calver.outputs.version }}
+
+      # ── 4. Install Rust toolchain ──────────────────────────────────────────────
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # ── 5. Install Node + JS deps ──────────────────────────────────────────────
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      # ── 6. Build the Tauri app (macOS universal .dmg + updater artifacts) ──────
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Updater signing: set these secrets in your repo settings.
+          # Generate with:  npx tauri signer generate
+          # Then add TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+          # as repository secrets, and paste the public key into tauri.conf.json.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ steps.calver.outputs.tag }}
+          releaseName: "WalkingPad ${{ steps.calver.outputs.tag }}"
+          releaseBody: "See the assets below to install this release."
+          releaseDraft: false
+          prerelease: false
+          # Build universal binary (Apple Silicon + Intel) for best compatibility.
+          # Remove the args line to build only for the runner's native arch.
+          args: --target universal-apple-darwin
