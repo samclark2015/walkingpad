@@ -1,5 +1,6 @@
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useState } from "react";
 import { exit } from "@tauri-apps/plugin-process";
+import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { usePadStore } from "../store/padStore";
 import type { MenubarDisplay } from "../store/padStore";
 
@@ -14,6 +15,26 @@ export function Preferences({ onClose }: PreferencesProps) {
   const setMenubarDisplay = usePadStore((s) => s.setMenubarDisplay);
 
   const panelRef = useRef<HTMLDivElement>(null);
+  const [launchAtLogin, setLaunchAtLogin] = useState<boolean | null>(null);
+
+  // Load current autostart state
+  useEffect(() => {
+    isEnabled().then(setLaunchAtLogin).catch(() => setLaunchAtLogin(false));
+  }, []);
+
+  const toggleLaunchAtLogin = async () => {
+    try {
+      if (launchAtLogin) {
+        await disable();
+        setLaunchAtLogin(false);
+      } else {
+        await enable();
+        setLaunchAtLogin(true);
+      }
+    } catch (e) {
+      console.error("autostart toggle failed", e);
+    }
+  };
 
   // Close when clicking outside
   useEffect(() => {
@@ -91,6 +112,20 @@ export function Preferences({ onClose }: PreferencesProps) {
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Launch at login */}
+      <div className="px-3 py-3 border-b border-gray-800">
+        <button
+          onClick={toggleLaunchAtLogin}
+          disabled={launchAtLogin === null}
+          className="flex items-center justify-between w-full text-xs text-gray-300 px-2.5 py-1.5 rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-50"
+        >
+          <span>Launch at login</span>
+          <span className={`w-8 h-4 rounded-full transition-colors relative ${launchAtLogin ? "bg-indigo-600" : "bg-gray-700"}`}>
+            <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${launchAtLogin ? "translate-x-4" : "translate-x-0.5"}`} />
+          </span>
+        </button>
       </div>
 
       {/* Quit */}
