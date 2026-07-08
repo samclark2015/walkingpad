@@ -1,10 +1,8 @@
 import { useState, useEffect, useRef } from "react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { exit } from "@tauri-apps/plugin-process";
 import { DeviceInfo, scanDevices } from "../lib/tauri";
 import { usePadStore } from "../store/padStore";
 import { loadLastAddress } from "../store/padStore";
-
-const appWindow = getCurrentWindow();
 
 export function DeviceScanner() {
   const connect = usePadStore((s) => s.connect);
@@ -66,14 +64,14 @@ export function DeviceScanner() {
 
   return (
     <div className="bg-gray-950 text-white flex flex-col">
-      {/* Drag region + hide button */}
-      <div data-tauri-drag-region className="flex justify-end px-4 pt-3 pb-1 select-none">
+      {/* Drag region + quit button */}
+      <div data-tauri-drag-region className="flex justify-end items-center px-4 pt-3 pb-1 select-none">
         <button
-          onClick={() => appWindow.hide()}
-          className="text-gray-600 hover:text-gray-300 transition-colors text-xl leading-none"
-          title="Hide"
+          onClick={() => exit(0)}
+          className="text-xs text-gray-600 hover:text-gray-300 transition-colors"
+          title="Quit"
         >
-          ×
+          Quit
         </button>
       </div>
 
@@ -117,7 +115,6 @@ export function DeviceScanner() {
               >
                 <div>
                   <p className="font-medium text-white">{d.name}</p>
-                  <p className="text-xs text-gray-500 font-mono mt-0.5">{d.id}</p>
                 </div>
                 <button
                   onClick={() => handleConnect(d)}

@@ -16,7 +16,6 @@ export function Dashboard() {
   const pauseBelt = usePadStore((s) => s.pauseBelt);
   const resumeBelt = usePadStore((s) => s.resumeBelt);
   const disconnect = usePadStore((s) => s.disconnect);
-  const deviceAddress = usePadStore((s) => s.deviceAddress);
   const errorMessage = usePadStore((s) => s.errorMessage);
   const clearError = usePadStore((s) => s.clearError);
 
@@ -48,7 +47,6 @@ export function Dashboard() {
       <header data-tauri-drag-region className="flex items-center justify-between px-6 py-4 border-b border-gray-800 select-none">
         <div data-tauri-drag-region>
           <h1 className="text-lg font-bold text-white">WalkingPad</h1>
-          <p className="text-xs text-gray-500 font-mono">{deviceAddress}</p>
         </div>
         <div className="flex items-center gap-3">
           <div className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full ${
