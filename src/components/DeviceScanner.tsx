@@ -65,7 +65,7 @@ export function DeviceScanner() {
   const isConnecting = connectionState === "connecting" || connectingId !== null;
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white flex flex-col">
+    <div className="bg-gray-950 text-white flex flex-col">
       {/* Drag region + hide button */}
       <div data-tauri-drag-region className="flex justify-end px-4 pt-3 pb-1 select-none">
         <button
@@ -77,7 +77,7 @@ export function DeviceScanner() {
         </button>
       </div>
 
-      <div className="flex-1 flex flex-col items-center justify-center p-8">
+      <div className="flex flex-col items-center justify-center p-8">
         <div className="w-full max-w-md">
           <h1 className="text-3xl font-bold text-center mb-2 text-white">WalkingPad</h1>
           <p className="text-center text-gray-400 mb-8 text-sm">Connect via Bluetooth</p>

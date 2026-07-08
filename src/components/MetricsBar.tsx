@@ -19,13 +19,16 @@ interface StatProps {
 
 function Stat({ label, value, unit, highlight }: StatProps) {
   return (
-    <div className={`flex flex-col items-center justify-center rounded-xl p-4 ${highlight ? "bg-indigo-900/30" : "bg-gray-800"}`}>
-      <span className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">{label}</span>
-      <div className="flex items-baseline gap-1">
-        <span className={`text-3xl font-bold tabular-nums ${highlight ? "text-indigo-300" : "text-white"}`}>
+    <div className={`@container flex flex-col items-center justify-center rounded-xl p-3 min-w-0 ${highlight ? "bg-indigo-900/30" : "bg-gray-800"}`}>
+      <span className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1 truncate w-full text-center">{label}</span>
+      <div className="flex items-baseline gap-0.5 min-w-0 w-full justify-center overflow-hidden">
+        <span
+          className={`font-bold tabular-nums truncate ${highlight ? "text-indigo-300" : "text-white"}`}
+          style={{ fontSize: "clamp(0.75rem, 4.5cqi, 1.875rem)" }}
+        >
           {value}
         </span>
-        {unit && <span className="text-sm text-gray-400">{unit}</span>}
+        {unit && <span className="text-xs text-gray-400 shrink-0">{unit}</span>}
       </div>
     </div>
   );

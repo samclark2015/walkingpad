@@ -76,7 +76,7 @@ export type ConnectionState =
   | "connected";
 
 /** Pending belt command — cleared when status confirms the expected state. */
-export type PendingCommand = "start" | "stop" | null;
+export type PendingCommand = "start" | "stop" | "pause" | "resume" | null;
 
 export interface SpeedPoint {
   t: number;  // Unix ms timestamp
@@ -111,6 +111,9 @@ interface PadStore {
   // Pending command (cleared when belt confirms new state)
   pendingCommand: PendingCommand;
 
+  // Paused flag — set by user intent, not derived from belt state
+  isPaused: boolean;
+
   // Desired speed (km/h) — sent to belt on start and on explicit set
   desiredSpeedKmh: number;
 
@@ -125,6 +128,8 @@ interface PadStore {
   disconnect(): Promise<void>;
   startBelt(): Promise<void>;
   stopBelt(): Promise<void>;
+  pauseBelt(): Promise<void>;
+  resumeBelt(): Promise<void>;
   setSpeed(speedX10: number): Promise<void>;
   setDesiredSpeed(speedX10: number): Promise<void>;
   switchMode(mode: number): Promise<void>;
@@ -152,6 +157,7 @@ export const usePadStore = create<PadStore>((set, get) => ({
 
   speedHistory: [],
   pendingCommand: null,
+  isPaused: false,
   desiredSpeedKmh: loadDesiredSpeed(),
 
   lastStatus: null,
@@ -176,6 +182,8 @@ export const usePadStore = create<PadStore>((set, get) => ({
         let pendingCommand = state.pendingCommand;
         if (pendingCommand === "start" && isNowRunning) pendingCommand = null;
         if (pendingCommand === "stop" && !isNowRunning) pendingCommand = null;
+        if (pendingCommand === "pause" && s.speed_kmh === 0) pendingCommand = null;
+        if (pendingCommand === "resume" && s.speed_kmh > 0) pendingCommand = null;
 
         // Rolling speed history (cap at 120 points)
         const now = Date.now();
@@ -249,6 +257,7 @@ export const usePadStore = create<PadStore>((set, get) => ({
       manualMode: false,
       speedHistory: [],
       pendingCommand: null,
+      isPaused: false,
     });
   },
 
@@ -264,11 +273,30 @@ export const usePadStore = create<PadStore>((set, get) => ({
   },
 
   async stopBelt() {
-    set({ pendingCommand: "stop" });
+    set({ pendingCommand: "stop", isPaused: false });
     try {
       await tauriStop();
     } catch (e) {
       set({ errorMessage: String(e), pendingCommand: null });
+    }
+  },
+
+  async pauseBelt() {
+    set({ pendingCommand: "pause", isPaused: true });
+    try {
+      await tauriSetSpeed(0);
+    } catch (e) {
+      set({ errorMessage: String(e), pendingCommand: null, isPaused: false });
+    }
+  },
+
+  async resumeBelt() {
+    const { desiredSpeedKmh } = get();
+    set({ pendingCommand: "resume", isPaused: false });
+    try {
+      await tauriSetSpeed(Math.round(desiredSpeedKmh * 10));
+    } catch (e) {
+      set({ errorMessage: String(e), pendingCommand: null, isPaused: true });
     }
   },
 
