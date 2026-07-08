@@ -66,8 +66,6 @@ jobs:
       # ── 4. Install Rust toolchain ──────────────────────────────────────────────
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-darwin,x86_64-apple-darwin
 
       - name: Cache Rust build artifacts
         uses: Swatinem/rust-cache@v2
@@ -101,6 +99,5 @@ jobs:
           releaseBody: "See the assets below to install this release."
           releaseDraft: false
           prerelease: false
-          # Build universal binary (Apple Silicon + Intel) for best compatibility.
-          # Remove the args line to build only for the runner's native arch.
-          args: --target universal-apple-darwin
+          # Build for Apple Silicon only.
+          args: --target aarch64-apple-darwin
