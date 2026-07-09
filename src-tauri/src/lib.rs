@@ -3,8 +3,8 @@ mod commands;
 mod state;
 
 use commands::{
-    ask_hist, ask_stats, connect_device, disconnect_device, scan_devices, set_pref_start_speed,
-    set_speed, set_tray_title, start_belt, stop_belt, switch_mode,
+    ask_hist, ask_stats, check_for_updates, connect_device, disconnect_device, scan_devices,
+    set_pref_start_speed, set_speed, set_tray_title, start_belt, stop_belt, switch_mode,
 };
 use state::AppState;
 use tauri::{
@@ -39,6 +39,7 @@ pub fn run() {
             ask_stats,
             ask_hist,
             set_tray_title,
+            check_for_updates,
         ])
         .setup(|app| {
             // Hide dock icon; rely solely on the menu bar tray icon.
@@ -64,6 +65,26 @@ pub fn run() {
                         }
                         Ok(None) => log::info!("App is up to date"),
                         Err(e) => log::warn!("Update check failed: {e}"),
+                    }
+                }
+            });
+
+            // Hourly update check — runs for the lifetime of the app.
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let interval = std::time::Duration::from_secs(60 * 60);
+                loop {
+                    tokio::time::sleep(interval).await;
+                    if let Ok(updater) = handle.updater() {
+                        match updater.check().await {
+                            Ok(Some(update)) => log::info!(
+                                "Hourly check: update available {} → {}",
+                                update.current_version,
+                                update.version
+                            ),
+                            Ok(None) => log::info!("Hourly check: up to date"),
+                            Err(e) => log::warn!("Hourly update check failed: {e}"),
+                        }
                     }
                 }
             });

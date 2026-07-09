@@ -67,6 +67,14 @@ export const askHist = (): Promise<void> => invoke("ask_hist");
 export const setTrayTitle = (title: string): Promise<void> =>
   invoke("set_tray_title", { title });
 
+/**
+ * Manually trigger an update check.
+ * Returns "up-to-date" or "update-available".
+ * When an update is found, the built-in native dialog handles the prompt automatically.
+ */
+export const checkForUpdates = (): Promise<"up-to-date" | "update-available"> =>
+  invoke("check_for_updates");
+
 // ─── Event listeners ──────────────────────────────────────────────────────────
 
 export const onStatus = (cb: (s: CurStatus) => void): Promise<UnlistenFn> =>

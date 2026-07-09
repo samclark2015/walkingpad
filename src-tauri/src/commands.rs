@@ -1,4 +1,5 @@
 use tauri::{AppHandle, Emitter, State};
+use tauri_plugin_updater::UpdaterExt;
 
 use crate::ble::connection::{self, DeviceInfo};
 use crate::ble::protocol::{self, PadMessage};
@@ -163,7 +164,20 @@ pub async fn ask_hist(state: State<'_, AppState>) -> Result<(), String> {
     send(&state, protocol::ask_hist(0)).await
 }
 
-// ─── Tray commands ────────────────────────────────────────────────────────────
+// ─── Update commands ──────────────────────────────────────────────────────────
+
+/// Manually trigger an update check. If an update is available the built-in
+/// dialog (dialog:true in tauri.conf.json) will prompt the user automatically.
+/// Returns "up-to-date" or "update-available" so the frontend can show brief
+/// feedback when no update is found.
+#[tauri::command]
+pub async fn check_for_updates(app: AppHandle) -> Result<String, String> {
+    let updater = app.updater().map_err(|e| e.to_string())?;
+    match updater.check().await.map_err(|e| e.to_string())? {
+        Some(_) => Ok("update-available".to_string()),
+        None => Ok("up-to-date".to_string()),
+    }
+}
 
 #[tauri::command]
 pub fn set_tray_title(title: String, app: AppHandle) -> Result<(), String> {

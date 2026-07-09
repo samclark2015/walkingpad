@@ -3,6 +3,7 @@ import { exit } from "@tauri-apps/plugin-process";
 import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { usePadStore } from "../store/padStore";
 import type { MenubarDisplay } from "../store/padStore";
+import { checkForUpdates } from "../lib/tauri";
 
 interface PreferencesProps {
   onClose: () => void;
@@ -16,6 +17,7 @@ export function Preferences({ onClose }: PreferencesProps) {
 
   const panelRef = useRef<HTMLDivElement>(null);
   const [launchAtLogin, setLaunchAtLogin] = useState<boolean | null>(null);
+  const [updateStatus, setUpdateStatus] = useState<"idle" | "checking" | "up-to-date" | "update-available">("idle");
 
   // Load current autostart state
   useEffect(() => {
@@ -33,6 +35,19 @@ export function Preferences({ onClose }: PreferencesProps) {
       }
     } catch (e) {
       console.error("autostart toggle failed", e);
+    }
+  };
+
+  const handleCheckForUpdates = async () => {
+    setUpdateStatus("checking");
+    try {
+      const result = await checkForUpdates();
+      setUpdateStatus(result);
+      // Reset label after 4 s so it doesn't stay stale
+      setTimeout(() => setUpdateStatus("idle"), 4000);
+    } catch (e) {
+      console.error("update check failed", e);
+      setUpdateStatus("idle");
     }
   };
 
@@ -125,6 +140,20 @@ export function Preferences({ onClose }: PreferencesProps) {
           <span className={`w-8 h-4 rounded-full transition-colors relative ${launchAtLogin ? "bg-indigo-600" : "bg-gray-700"}`}>
             <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${launchAtLogin ? "translate-x-4" : "translate-x-0.5"}`} />
           </span>
+        </button>
+      </div>
+
+      {/* Check for Updates */}
+      <div className="px-3 py-3 border-b border-gray-800">
+        <button
+          onClick={handleCheckForUpdates}
+          disabled={updateStatus === "checking"}
+          className="flex items-center justify-between w-full text-xs text-gray-300 px-2.5 py-1.5 rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-50"
+        >
+          <span>Check for Updates</span>
+          {updateStatus === "checking" && <span className="text-gray-500">Checking…</span>}
+          {updateStatus === "up-to-date" && <span className="text-green-400">Up to date</span>}
+          {updateStatus === "update-available" && <span className="text-indigo-400">Update available</span>}
         </button>
       </div>
 
