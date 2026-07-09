@@ -9,7 +9,7 @@ use commands::{
 use state::AppState;
 use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager, WindowEvent,
+    ActivationPolicy, Manager, WindowEvent,
 };
 use tauri_plugin_positioner::{Position, WindowExt};
 use tauri_plugin_updater::UpdaterExt;
@@ -41,6 +41,12 @@ pub fn run() {
             set_tray_title,
         ])
         .setup(|app| {
+            // Hide dock icon; rely solely on the menu bar tray icon.
+            // LSUIElement in Info.plist handles this for the bundled release app,
+            // but this call ensures it also works in `tauri dev` mode.
+            #[cfg(target_os = "macos")]
+            app.set_activation_policy(ActivationPolicy::Accessory);
+
             // Spawn a background update check. The built-in dialog:true config handles
             // prompting the user; errors are non-fatal (no network, no update available, etc.)
             let handle = app.handle().clone();
