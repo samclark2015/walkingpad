@@ -166,15 +166,21 @@ pub async fn ask_hist(state: State<'_, AppState>) -> Result<(), String> {
 
 // ─── Update commands ──────────────────────────────────────────────────────────
 
-/// Manually trigger an update check. If an update is available the built-in
-/// dialog (dialog:true in tauri.conf.json) will prompt the user automatically.
-/// Returns "up-to-date" or "update-available" so the frontend can show brief
-/// feedback when no update is found.
+/// Manually trigger an update check. If an update is available it is
+/// downloaded and installed immediately (same behaviour as the background
+/// check). Returns "up-to-date" or "update-available" so the frontend can
+/// show brief feedback when no update is found.
 #[tauri::command]
 pub async fn check_for_updates(app: AppHandle) -> Result<String, String> {
     let updater = app.updater().map_err(|e| e.to_string())?;
     match updater.check().await.map_err(|e| e.to_string())? {
-        Some(_) => Ok("update-available".to_string()),
+        Some(update) => {
+            update
+                .download_and_install(|_, _| {}, || {})
+                .await
+                .map_err(|e| e.to_string())?;
+            Ok("update-available".to_string())
+        }
         None => Ok("up-to-date".to_string()),
     }
 }

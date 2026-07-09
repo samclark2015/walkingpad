@@ -5,6 +5,8 @@ import { usePadStore } from "../store/padStore";
 import type { MenubarDisplay } from "../store/padStore";
 import { checkForUpdates } from "../lib/tauri";
 
+export type UpdateStatus = "idle" | "checking" | "up-to-date" | "update-available" | "installing";
+
 interface PreferencesProps {
   onClose: () => void;
 }
@@ -17,7 +19,7 @@ export function Preferences({ onClose }: PreferencesProps) {
 
   const panelRef = useRef<HTMLDivElement>(null);
   const [launchAtLogin, setLaunchAtLogin] = useState<boolean | null>(null);
-  const [updateStatus, setUpdateStatus] = useState<"idle" | "checking" | "up-to-date" | "update-available">("idle");
+  const [updateStatus, setUpdateStatus] = useState<"idle" | "checking" | "up-to-date" | "update-available" | "installing">("idle");
 
   // Load current autostart state
   useEffect(() => {
@@ -42,9 +44,14 @@ export function Preferences({ onClose }: PreferencesProps) {
     setUpdateStatus("checking");
     try {
       const result = await checkForUpdates();
-      setUpdateStatus(result);
-      // Reset label after 4 s so it doesn't stay stale
-      setTimeout(() => setUpdateStatus("idle"), 4000);
+      if (result === "update-available") {
+        setUpdateStatus("installing");
+        // The Rust command blocks until download+install completes, then the
+        // app relaunches automatically — so we never reach the line below.
+      } else {
+        setUpdateStatus("up-to-date");
+        setTimeout(() => setUpdateStatus("idle"), 4000);
+      }
     } catch (e) {
       console.error("update check failed", e);
       setUpdateStatus("idle");
@@ -147,11 +154,12 @@ export function Preferences({ onClose }: PreferencesProps) {
       <div className="px-3 py-3 border-b border-gray-800">
         <button
           onClick={handleCheckForUpdates}
-          disabled={updateStatus === "checking"}
+          disabled={updateStatus === "checking" || updateStatus === "installing"}
           className="flex items-center justify-between w-full text-xs text-gray-300 px-2.5 py-1.5 rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-50"
         >
           <span>Check for Updates</span>
           {updateStatus === "checking" && <span className="text-gray-500">Checking…</span>}
+          {updateStatus === "installing" && <span className="text-indigo-400">Installing…</span>}
           {updateStatus === "up-to-date" && <span className="text-green-400">Up to date</span>}
           {updateStatus === "update-available" && <span className="text-indigo-400">Update available</span>}
         </button>
