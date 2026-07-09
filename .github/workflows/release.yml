@@ -7,7 +7,7 @@ on:
 
 jobs:
   release:
-    runs-on: macos-latest
+    runs-on: macos-14
     permissions:
       contents: write   # needed to create the GitHub release
 
@@ -41,7 +41,20 @@ jobs:
           echo "version=${TAG}" >> "$GITHUB_OUTPUT"
           echo "Computed tag: ${TAG}"
 
-      # ── 3. Stamp the version into tauri.conf.json and Cargo.toml ──────────────
+      # ── 3. Install Rust toolchain + restore cache ─────────────────────────────
+      # Cache is restored BEFORE stamping the version so Cargo.toml is in its
+      # original committed state when the cache key is computed, ensuring
+      # consistent hits across runs with the same dependency tree.
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          add-job-id-key: false
+
+      # ── 4. Stamp the version into tauri.conf.json and Cargo.toml ──────────────
       - name: Stamp version
         run: |
           VERSION="${{ steps.calver.outputs.version }}"
@@ -62,15 +75,6 @@ jobs:
           sed -i '' "s/^version = \".*\"/version = \"${VERSION}\"/" src-tauri/Cargo.toml
         env:
           VERSION: ${{ steps.calver.outputs.version }}
-
-      # ── 4. Install Rust toolchain ──────────────────────────────────────────────
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust build artifacts
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
 
       # ── 5. Install Node + JS deps ──────────────────────────────────────────────
       - name: Setup Node
@@ -99,5 +103,5 @@ jobs:
           releaseBody: "See the assets below to install this release."
           releaseDraft: false
           prerelease: false
-          # Build for Apple Silicon only.
+          # Build for Apple Silicon. macos-14 runner is native arm64 — no cross-compilation needed.
           args: --target aarch64-apple-darwin
